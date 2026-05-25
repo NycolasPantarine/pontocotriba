@@ -209,13 +209,11 @@ input[type=file]{display:none}
       <div class="drop-zone" id="drop-zone" onclick="document.getElementById('fi').click()">
         <div class="dz-icon">📋</div>
         <div class="dz-title">Clique ou arraste aqui</div>
-        <div class="dz-sub">JPG / PNG — múltiplos arquivos</div>
+        <div class="dz-sub">JPG, PNG ou PDF — múltiplos arquivos</div>
       </div>
-      <input type="file" id="fi" multiple accept="image/*">
+      <input type="file" id="fi" multiple accept="image/*,.pdf,application/pdf">
       <div class="file-list" id="file-list"></div>
-      <div class="notice notice-warn hidden" id="pdf-warn" style="padding:6px 9px;font-size:10px">
-        <span>⚠ Converta PDFs para imagem antes de enviar.</span>
-      </div>
+
       <div style="margin-top:.75rem;display:flex;gap:6px">
         <button class="btn btn-primary" id="btn-process" disabled onclick="startProcessing()" style="flex:1">⚡ Processar com IA</button>
         <button class="btn btn-ghost btn-sm" onclick="clearFiles()">✕</button>
@@ -511,12 +509,9 @@ function atualizarIndicadorAPI(ativa) {
 
 // ─── FILES ───────────────────────────────────────────────
 function addFiles(newFiles) {
-  let hasPdf = false;
   newFiles.forEach(f => {
-    if (f.type === 'application/pdf') { hasPdf = true; return; }
     if (!files.find(x => x.name === f.name)) files.push(f);
   });
-  document.getElementById('pdf-warn').classList.toggle('hidden', !hasPdf);
   renderFileList();
 }
 function renderFileList() {
@@ -525,7 +520,8 @@ function renderFileList() {
   files.forEach((f, i) => {
     const d = document.createElement('div');
     d.className = 'chip';
-    d.innerHTML = `<span>${f.type.startsWith('image/') ? '🖼' : '📄'}</span><span class="chip-name">${f.name}</span><span class="chip-sz">${(f.size/1024).toFixed(0)}KB</span><span class="chip-rm" onclick="removeFile(${i})">×</span>`;
+    const icon = f.type === 'application/pdf' ? '📄' : '🖼';
+    d.innerHTML = `<span>${icon}</span><span class="chip-name">${f.name}</span><span class="chip-sz">${(f.size/1024).toFixed(0)}KB</span><span class="chip-rm" onclick="removeFile(${i})">×</span>`;
     el.appendChild(d);
   });
   document.getElementById('btn-process').disabled = files.length === 0;
@@ -554,9 +550,16 @@ function setProgress(pct, label) {
 // ─── IMAGE RESIZE ────────────────────────────────────────
 function toBase64(file) {
   return new Promise((res, rej) => {
-    const MAX = 1600;
     const reader = new FileReader();
     reader.onerror = rej;
+    // PDF: enviar direto como base64 sem redimensionar
+    if (file.type === 'application/pdf') {
+      reader.onload = e => res(e.target.result.split(',')[1]);
+      reader.readAsDataURL(file);
+      return;
+    }
+    // Imagem: redimensionar para 1600px max
+    const MAX = 1600;
     reader.onload = e => {
       const img = new Image();
       img.onerror = rej;
@@ -587,7 +590,7 @@ async function startProcessing() {
   log('Iniciando processamento...', 'info');
 
   const prompt = `Você é um especialista em leitura de cartões de ponto brasileiros manuscritos.
-Analise a imagem com MÁXIMO cuidado e extraia TODOS os registros de ponto visíveis.
+Analise a imagem com MÁXIMO cuidado. A imagem pode conter UM ou MAIS cartões de ponto (ex: dois cartões lado a lado numa folha A4). Identifique e extraia TODOS os cartões visíveis separadamente.
 
 ATENÇÃO ESPECIAL AOS DÍGITOS MANUSCRITOS — erros comuns:
 - 1 e 7 são frequentemente confundidos (ex: 17:32 pode parecer 11:32 ou 19:32)
@@ -602,14 +605,18 @@ Use o CONTEXTO para validar cada horário lido:
 - Saída tarde: tipicamente entre 16:00 e 19:30
 Se um horário não fizer sentido nesse contexto, releia o dígito com atenção.
 
-Retorne APENAS um JSON válido (sem markdown, sem texto antes ou depois):
-{
-  "matricula":"string","nome":"string","pis":"string (apenas números)",
-  "mes":"string (2 dígitos)","ano":"string (4 dígitos)","quinzena":"1 ou 2",
-  "registros":[{"dia":"número do dia","marcacoes":["HH:MM",...],"observacao":"BH|F|FOLGA ou vazio"}]
-}
+Retorne APENAS um JSON válido (sem markdown, sem texto antes ou depois).
+Se houver apenas 1 cartão, retorne um array com 1 objeto.
+Se houver 2 ou mais cartões, retorne um array com um objeto por cartão:
+[
+  {
+    "matricula":"string","nome":"string","pis":"string (apenas números)",
+    "mes":"string (2 dígitos)","ano":"string (4 dígitos)","quinzena":"1 ou 2",
+    "registros":[{"dia":"número do dia","marcacoes":["HH:MM",...],"observacao":"BH|F|FOLGA ou vazio"}]
+  }
+]
 REGRAS: marcacoes em ordem (entrada manhã, saída manhã, entrada tarde, saída tarde).
-Se o dia tiver BH/DH/F/S/D: use observacao e marcacoes=[].
+Se o dia tiver BH/DH/F/S/D: use observacao e marcacoes:[].
 Inclua APENAS dias com registro. Não invente dados.`;
 
   for (let i = 0; i < files.length; i++) {
@@ -632,7 +639,10 @@ Inclua APENAS dias com registro. Não invente dados.`;
           model: 'claude-sonnet-4-5',
           max_tokens: 1500,
           messages: [{ role: 'user', content: [
-            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
+            { type: f.type === 'application/pdf' ? 'document' : 'image',
+              source: { type: 'base64',
+                media_type: f.type === 'application/pdf' ? 'application/pdf' : 'image/jpeg',
+                data: b64 } },
             { type: 'text', text: prompt }
           ]}]
         })
@@ -644,15 +654,20 @@ Inclua APENAS dias com registro. Não invente dados.`;
       let parsed;
       try { parsed = JSON.parse(raw.replace(/```json|```/g,'').trim()); }
       catch(e) { log(`  ✗ JSON inválido: ${e.message}`, 'err'); continue; }
-      const regs = parsed.registros || [];
-      log(`  ✓ ${parsed.nome} | Q${parsed.quinzena} | ${regs.length} dias`, 'ok');
-      regs.forEach(r => extracted.push({
-        matricula: parsed.matricula||'', nome: parsed.nome||'',
-        pis: (parsed.pis||'').replace(/\D/g,''),
-        mes: parsed.mes||'', ano: parsed.ano||'', quinzena: parsed.quinzena||'',
-        dia: String(r.dia).padStart(2,'0'),
-        marcacoes: r.marcacoes||[], observacao: r.observacao||''
-      }));
+      // Normalizar: aceita objeto único ou array de cartões
+      const cartoes = Array.isArray(parsed) ? parsed : [parsed];
+      cartoes.forEach(cartao => {
+        const regs = cartao.registros || [];
+        log(`  ✓ ${cartao.nome} | Q${cartao.quinzena} | ${regs.length} dias`, 'ok');
+        regs.forEach(r => extracted.push({
+          _id: Math.random().toString(36).slice(2),
+          matricula: cartao.matricula||'', nome: cartao.nome||'',
+          pis: (cartao.pis||'').replace(/\D/g,''),
+          mes: cartao.mes||'', ano: cartao.ano||'', quinzena: cartao.quinzena||'',
+          dia: String(r.dia).padStart(2,'0'),
+          marcacoes: r.marcacoes||[], observacao: r.observacao||''
+        }));
+      });
     } catch(e) { log(`  ✗ ${e.message}`, 'err'); }
   }
 
@@ -663,7 +678,13 @@ Inclua APENAS dias com registro. Não invente dados.`;
     setStep(2);
     return;
   }
-  extracted.sort((a,b) => parseInt(a.dia) - parseInt(b.dia));
+  // Ordenar por matrícula (colaborador) e depois por dia
+  extracted.sort((a,b) => {
+    if (a.matricula !== b.matricula) return a.matricula.localeCompare(b.matricula);
+    const dataA = a.ano + a.mes + a.dia;
+    const dataB = b.ano + b.mes + b.dia;
+    return dataA.localeCompare(dataB);
+  });
   log(`\n✓ ${extracted.length} registros prontos.`, 'ok');
   setTimeout(showReview, 500);
 }
@@ -755,7 +776,18 @@ function renderMetrics() {
 function renderTable() {
   const tb = document.getElementById('tbody');
   tb.innerHTML = '';
-  extracted.forEach((r, idx) => {
+  const fonte = getRegistrosFiltrados();
+  let ultimaMatricula = null;
+  fonte.forEach((r, idx) => {
+    // Separador de colaborador
+    if (r.matricula !== ultimaMatricula) {
+      ultimaMatricula = r.matricula;
+      const sep = document.createElement('tr');
+      sep.innerHTML = `<td colspan="11" style="background:var(--bg3);padding:6px 10px;font-size:11px;font-weight:500;color:var(--text);border-bottom:1px solid var(--border2);border-top:1px solid var(--border2)">
+        👤 ${r.nome} <span style="color:var(--text3);font-weight:400;font-family:var(--mono)">· Mat. ${r.matricula} · PIS ${r.pis}</span>
+      </td>`;
+      tb.appendChild(sep);
+    }
     const inc = hasInconsistency(r);
     const m = r.marcacoes;
     const obs = r.observacao;
@@ -776,7 +808,11 @@ function renderTable() {
       <td class="${inc && m.length===3?'danger':''}">${m[3]||'—'}</td>
       <td style="font-size:11px;color:var(--text3)">${obs||''}</td>
       <td>${badge}</td>`;
-    tr.querySelector('.edit-btn').addEventListener('click', () => openModal(idx));
+    const rid = r._id;
+    tr.querySelector('.edit-btn').addEventListener('click', () => {
+      const idx = extracted.findIndex(x => x._id === rid);
+      openModal(idx);
+    });
     tb.appendChild(tr);
   });
 }
@@ -1091,8 +1127,9 @@ function aplicarMassa() {
   extracted.forEach(r => {
     if (!matAtual || r.matricula === matAtual) {
       r.nome = massaColab.n;
-      r.pis = massaColab.p;
+      r.pis  = massaColab.p;
       r.matricula = massaColab.m;
+      // _id mantido — não sobrescrever
       qtd++;
     }
   });
