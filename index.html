@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PontoLeitura — Automação de Cartão de Ponto</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0e0f11;--bg2:#16181c;--bg3:#1e2026;--bg4:#252830;
+  --border:#2e3138;--border2:#3a3e48;
+  --text:#e8eaf0;--text2:#9ea4b2;--text3:#5c6070;
+  --accent:#4ade80;--accent2:#22c55e;--accent-dim:#1a3d26;
+  --warn:#fbbf24;--warn-dim:#3d2e0a;
+  --danger:#f87171;--danger-dim:#3d1414;
+  --info:#60a5fa;--info-dim:#102040;
+  --mono:'DM Mono',monospace;--sans:'Sora',sans-serif;
+  --radius:8px;--topbar:52px;--sidebar:290px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13px;line-height:1.5}
+
+/* TOPBAR */
+.topbar{
+  position:fixed;top:0;left:0;right:0;height:var(--topbar);z-index:100;
+  background:var(--bg2);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;padding:0 1.25rem;gap:1rem;
+}
+.logo{font-weight:600;font-size:14px;letter-spacing:-.02em;white-space:nowrap}
+.logo span{color:var(--accent)}
+.vsep{width:1px;height:20px;background:var(--border2);flex-shrink:0}
+.steps{display:flex;align-items:center;gap:3px;flex:1;overflow:hidden}
+.step{
+  display:flex;align-items:center;gap:5px;padding:4px 9px;
+  border-radius:var(--radius);font-size:11px;font-weight:500;
+  color:var(--text3);white-space:nowrap;
+}
+.step.active{background:var(--bg3);color:var(--text);border:1px solid var(--border2)}
+.step.done{color:var(--accent)}
+.step-n{
+  width:16px;height:16px;border-radius:50%;background:var(--bg4);
+  border:1px solid var(--border2);display:flex;align-items:center;
+  justify-content:center;font-size:9px;font-family:var(--mono);flex-shrink:0;
+}
+.step.active .step-n{background:var(--accent);border-color:var(--accent);color:#000}
+.step.done .step-n{background:var(--accent-dim);border-color:var(--accent);color:var(--accent)}
+.arr{color:var(--text3);font-size:10px;flex-shrink:0}
+.top-actions{display:flex;gap:6px;margin-left:auto;flex-shrink:0}
+
+/* LAYOUT */
+.body{position:fixed;top:var(--topbar);left:0;right:0;bottom:0;display:flex}
+
+/* SIDEBAR */
+.sidebar{
+  width:var(--sidebar);min-width:var(--sidebar);
+  background:var(--bg2);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;overflow-y:auto;
+}
+.sb-sec{padding:.875rem;border-bottom:1px solid var(--border)}
+.sb-label{font-size:9px;font-weight:500;color:var(--text3);letter-spacing:.09em;text-transform:uppercase;margin-bottom:.625rem}
+
+/* MAIN */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.metrics-bar{
+  display:flex;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;
+}
+.mpill{
+  flex:1;padding:9px 14px;border-right:1px solid var(--border);
+}
+.mpill:last-child{border-right:none}
+.mpill .ml{font-size:9px;color:var(--text3);letter-spacing:.07em;text-transform:uppercase;margin-bottom:2px}
+.mpill .mv{font-size:20px;font-weight:600;font-family:var(--mono);line-height:1}
+.mv.ok{color:var(--accent)}.mv.warn{color:var(--warn)}.mv.danger{color:var(--danger)}
+.status-bar{
+  padding:6px 14px;font-size:11px;flex-shrink:0;display:flex;align-items:center;gap:6px;
+  border-bottom:1px solid var(--border);
+}
+.status-bar.ok{background:var(--accent-dim);color:var(--accent)}
+.status-bar.warn{background:var(--warn-dim);color:var(--warn)}
+.status-bar.hidden{display:none!important}
+/* MODAL API */
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+.table-wrap{flex:1;overflow:auto}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead{position:sticky;top:0;z-index:5;background:var(--bg3)}
+th{padding:8px 10px;text-align:left;font-size:9px;letter-spacing:.07em;text-transform:uppercase;color:var(--text3);font-weight:500;border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:7px 10px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:12px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+tr:hover td{background:var(--bg3);color:var(--text)}
+tr.has-error td{background:rgba(248,113,113,.04)}
+td.danger{color:var(--danger)}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text3);gap:.6rem}
+.empty-icon{font-size:3rem;opacity:.25}
+.empty-title{font-size:14px;font-weight:500;color:var(--text2)}
+.empty-sub{font-size:12px}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:var(--radius);font-family:var(--sans);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;border:none;white-space:nowrap}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn-primary{background:var(--accent);color:#000}
+.btn-primary:hover:not(:disabled){background:var(--accent2)}
+.btn-ghost{background:transparent;color:var(--text2);border:1px solid var(--border2)}
+.btn-ghost:hover:not(:disabled){background:var(--bg3);color:var(--text)}
+.btn-sm{padding:5px 10px;font-size:11px}
+.btn-block{width:100%;justify-content:center}
+
+/* INPUTS */
+.inp{width:100%;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:var(--radius);padding:7px 10px;font-family:var(--mono);font-size:12px;outline:none;transition:border .15s}
+.inp:focus{border-color:var(--accent)}
+.inp::placeholder{color:var(--text3)}
+
+/* UPLOAD */
+.drop-zone{border:1px dashed var(--border2);border-radius:var(--radius);padding:1.25rem 1rem;text-align:center;cursor:pointer;transition:all .2s}
+.drop-zone:hover,.drop-zone.over{border-color:var(--accent);background:rgba(74,222,128,.04)}
+.dz-icon{font-size:1.6rem;opacity:.35;margin-bottom:.3rem}
+.dz-title{font-size:12px;font-weight:500;margin-bottom:.15rem}
+.dz-sub{font-size:10px;color:var(--text3)}
+input[type=file]{display:none}
+.file-list{display:flex;flex-direction:column;gap:4px;margin-top:.6rem}
+.chip{display:flex;align-items:center;gap:7px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:5px 9px;font-size:11px}
+.chip-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono)}
+.chip-sz{color:var(--text3);font-family:var(--mono);font-size:10px}
+.chip-rm{cursor:pointer;color:var(--text3);font-size:15px;transition:color .15s;line-height:1}
+.chip-rm:hover{color:var(--danger)}
+
+/* LOG + PROGRESS */
+.log-box{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;font-family:var(--mono);font-size:10px;line-height:1.8;max-height:150px;overflow-y:auto;color:var(--text2);white-space:pre-wrap;margin-top:.6rem}
+.log-box:empty{display:none}
+.log-ok{color:var(--accent)}.log-err{color:var(--danger)}.log-warn{color:var(--warn)}.log-info{color:var(--info)}
+.prog-track{height:2px;background:var(--bg4);border-radius:2px;overflow:hidden;margin-top:.6rem}
+.prog-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:2px;transition:width .4s;width:0}
+.prog-label{font-size:10px;font-family:var(--mono);color:var(--text3);margin-top:3px}
+
+/* NOTICE */
+.notice{display:flex;align-items:flex-start;gap:7px;background:var(--info-dim);border:1px solid rgba(96,165,250,.2);border-radius:var(--radius);padding:7px 10px;font-size:11px;color:var(--info);margin-top:.6rem}
+.notice-warn{background:var(--warn-dim);border-color:rgba(251,191,36,.2);color:var(--warn)}
+
+/* AFD */
+.afd-box{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:10px;font-family:var(--mono);font-size:10px;line-height:1.8;max-height:180px;overflow-y:auto;color:var(--accent);margin-top:.6rem}
+
+/* BADGES */
+.badge{display:inline-block;padding:2px 7px;border-radius:100px;font-size:10px;font-weight:500;font-family:var(--mono)}
+.badge-ok{background:var(--accent-dim);color:var(--accent);border:1px solid rgba(74,222,128,.2)}
+.badge-warn{background:var(--warn-dim);color:var(--warn);border:1px solid rgba(251,191,36,.2)}
+.badge-info{background:var(--info-dim);color:var(--info);border:1px solid rgba(96,165,250,.2)}
+.edit-btn{background:none;border:none;cursor:pointer;color:var(--text3);font-size:13px;padding:2px 5px;border-radius:4px;transition:all .15s;font-family:var(--mono)}
+.edit-btn:hover{background:var(--bg4);color:var(--accent)}
+
+/* MODAL */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;z-index:1000;padding:1rem;backdrop-filter:blur(4px)}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:12px;padding:1.5rem;width:100%;max-width:460px}
+.modal-title{font-size:14px;font-weight:600;margin-bottom:.2rem}
+.modal-sub{font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:1.25rem}
+.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:1rem}
+.mf label{display:block;font-size:9px;color:var(--text3);letter-spacing:.07em;text-transform:uppercase;margin-bottom:4px}
+.mf input{width:100%;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:var(--radius);padding:8px 10px;font-family:var(--mono);font-size:14px;outline:none;transition:border .15s;text-align:center}
+.mf input:focus{border-color:var(--accent)}
+.mf input.ferr{border-color:var(--danger);background:var(--danger-dim)}
+.mf input.fok{border-color:var(--accent)}
+.mf.full{grid-column:1/-1}
+.msec{font-size:9px;color:var(--text3);letter-spacing:.07em;text-transform:uppercase;grid-column:1/-1;padding-bottom:4px;border-bottom:1px solid var(--border);margin-bottom:2px}
+.mactions{display:flex;justify-content:flex-end;gap:8px;margin-top:.75rem}
+.kb{display:inline-block;background:var(--bg4);border:1px solid var(--border2);border-radius:4px;padding:1px 5px;font-family:var(--mono);font-size:10px;color:var(--text2)}
+
+.hidden{display:none!important}
+/* MODAL API */
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+@keyframes metricPop{0%{transform:scale(1)}40%{transform:scale(1.22)}100%{transform:scale(1)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:var(--bg3)}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">Ponto<span>Leitura</span></div>
+  <div class="vsep"></div>
+  <div class="steps">
+    <div class="step active" id="s1"><span class="step-n">1</span>Config</div>
+    <span class="arr">›</span>
+    <div class="step" id="s2"><span class="step-n">2</span>Upload</div>
+    <span class="arr">›</span>
+    <div class="step" id="s3"><span class="step-n">3</span>Processar</div>
+    <span class="arr">›</span>
+    <div class="step" id="s4"><span class="step-n">4</span>Conferência</div>
+    <span class="arr">›</span>
+    <div class="step" id="s5"><span class="step-n">5</span>Exportar</div>
+  </div>
+  <div class="top-actions">
+    <button class="btn btn-ghost btn-sm hidden" id="btn-export-top" onclick="downloadAFD()">⬇ AFD</button>
+    <button class="btn btn-ghost btn-sm hidden" id="btn-csv-top" onclick="downloadCSV()">⬇ CSV</button>
+    <button class="btn btn-ghost btn-sm" onclick="resetApp()">↩ Reiniciar</button>
+  </div>
+</div>
+
+<div class="body">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+
+    <!-- API — somente admin com senha -->
+    <div class="sb-sec" id="panel-api-status">
+      <div class="sb-label">🔑 API</div>
+      <div id="api-indicator" class="notice notice-warn" style="padding:7px 10px;font-size:11px">
+        <span id="api-indicator-txt">⚠ Chave não configurada.</span>
+      </div>
+      <button class="btn btn-ghost btn-sm" style="margin-top:.5rem;width:100%;justify-content:center;font-size:10px" onclick="abrirModalAPI()">⚙ Configurar API</button>
+    </div>
+
+    <!-- UPLOAD -->
+    <div class="sb-sec">
+      <div class="sb-label">📂 Cartões de ponto</div>
+      <div class="drop-zone" id="drop-zone" onclick="document.getElementById('fi').click()">
+        <div class="dz-icon">📋</div>
+        <div class="dz-title">Clique ou arraste aqui</div>
+        <div class="dz-sub">JPG / PNG — múltiplos arquivos</div>
+      </div>
+      <input type="file" id="fi" multiple accept="image/*">
+      <div class="file-list" id="file-list"></div>
+      <div class="notice notice-warn hidden" id="pdf-warn" style="padding:6px 9px;font-size:10px">
+        <span>⚠ Converta PDFs para imagem antes de enviar.</span>
+      </div>
+      <div style="margin-top:.75rem;display:flex;gap:6px">
+        <button class="btn btn-primary" id="btn-process" disabled onclick="startProcessing()" style="flex:1">⚡ Processar com IA</button>
+        <button class="btn btn-ghost btn-sm" onclick="clearFiles()">✕</button>
+      </div>
+      <div class="prog-track hidden" id="prog-track"><div class="prog-fill" id="prog-fill"></div></div>
+      <div class="prog-label hidden" id="prog-label"></div>
+      <div class="log-box" id="log-box"></div>
+    </div>
+
+    <!-- EXPORTAR (aparece após processar) -->
+    <div class="sb-sec hidden" id="panel-export">
+      <div class="sb-label">📤 Exportar</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <button class="btn btn-primary btn-block" onclick="downloadAFD()">⬇ Baixar AFD (.txt)</button>
+        <button class="btn btn-ghost btn-block" onclick="downloadCSV()">⬇ Baixar CSV (Excel)</button>
+      </div>
+      <div class="sb-label" style="margin-top:1rem">Prévia AFD</div>
+      <div class="afd-box" id="afd-preview"></div>
+      <div class="notice" style="padding:6px 9px;font-size:10px;margin-top:.6rem">
+        <span>ℹ Layout tipo 3 Sênior. Valide antes de importar.</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <div class="metrics-bar">
+      <div class="mpill"><div class="ml">Registros</div><div class="mv" id="m-total">—</div></div>
+      <div class="mpill"><div class="ml">Inconsistências</div><div class="mv" id="m-incons">—</div></div>
+      <div class="mpill"><div class="ml">Banco de Horas</div><div class="mv" id="m-bh">—</div></div>
+      <div class="mpill"><div class="ml">Feriados/Folgas</div><div class="mv" id="m-folga">—</div></div>
+    </div>
+
+    <div class="status-bar hidden" id="status-bar"></div>
+
+    <div class="table-wrap">
+      <div class="empty" id="empty-state">
+        <div class="empty-icon">📋</div>
+        <div class="empty-title">Nenhum dado processado</div>
+        <div class="empty-sub">Configure a chave, envie as imagens e clique em Processar</div>
+      </div>
+      <table class="hidden" id="main-table">
+        <thead>
+          <tr>
+            <th style="width:34px"></th>
+            <th style="width:82px">Matrícula</th>
+            <th style="min-width:140px">Nome</th>
+            <th style="width:108px">PIS</th>
+            <th style="width:82px">Data</th>
+            <th style="width:76px">Entrada 1</th>
+            <th style="width:76px">Saída 1</th>
+            <th style="width:76px">Entrada 2</th>
+            <th style="width:76px">Saída 2</th>
+            <th style="width:60px">Obs</th>
+            <th style="width:90px">Status</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay hidden" id="edit-modal" onclick="closeModalOut(event)">
+  <div class="modal">
+    <div class="modal-title" id="modal-title">Editar registro</div>
+    <div class="modal-sub" id="modal-sub"></div>
+    <div class="mgrid">
+      <div class="msec">Identificação</div>
+      <div class="mf"><label>Matrícula</label><input id="m-mat" type="text"></div>
+      <div class="mf"><label>PIS</label><input id="m-pis" type="text" maxlength="11"></div>
+      <div class="mf"><label>Dia</label><input id="m-dia" type="text" maxlength="2" placeholder="21"></div>
+      <div class="mf"><label>Mês</label><input id="m-mes" type="text" maxlength="2" placeholder="05"></div>
+      <div class="msec" style="margin-top:4px">Marcações</div>
+      <div class="mf"><label>Entrada manhã</label><input id="m-e1" type="text" maxlength="5" placeholder="07:30"></div>
+      <div class="mf"><label>Saída manhã</label><input id="m-s1" type="text" maxlength="5" placeholder="12:00"></div>
+      <div class="mf"><label>Entrada tarde</label><input id="m-e2" type="text" maxlength="5" placeholder="13:00"></div>
+      <div class="mf"><label>Saída tarde</label><input id="m-s2" type="text" maxlength="5" placeholder="17:30"></div>
+      <div class="mf full"><label>Observação</label><input id="m-obs" type="text" placeholder="BH, FERIADO, FOLGA..."></div>
+    </div>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:.5rem">
+      💡 <span class="kb">0730</span> ou <span class="kb">07:30</span> — ambos aceitos
+    </div>
+    <div class="mactions">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary btn-sm" onclick="saveModal()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+
+
+<!-- MODAL CONFIG API (admin only) -->
+<div class="modal-overlay hidden" id="modal-api" onclick="if(event.target.id==='modal-api')fecharModalAPI()">
+  <div class="modal" style="max-width:380px">
+
+    <!-- Step 1: senha -->
+    <div id="api-step-senha">
+      <div class="modal-title">⚙ Configurar API</div>
+      <div class="modal-sub" style="margin-bottom:1rem">Acesso restrito. Digite a senha de administrador.</div>
+      <div class="mf" style="margin-bottom:.75rem">
+        <label>Senha</label>
+        <input class="mf input" id="api-senha-inp" type="password" placeholder="••••••••"
+          style="width:100%;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:var(--radius);padding:9px 12px;font-family:var(--mono);font-size:14px;outline:none;transition:border .15s;letter-spacing:.08em"
+          onkeydown="if(event.key==='Enter')confirmarSenhaAPI()">
+      </div>
+      <div class="notice notice-warn hidden" id="api-senha-erro" style="padding:7px;font-size:11px;margin-bottom:.75rem">
+        <span>⚠ Senha incorreta.</span>
+      </div>
+      <div class="mactions">
+        <button class="btn btn-ghost btn-sm" onclick="fecharModalAPI()">Cancelar</button>
+        <button class="btn btn-primary btn-sm" onclick="confirmarSenhaAPI()">Confirmar →</button>
+      </div>
+    </div>
+
+    <!-- Step 2: editar chave (só após senha correta) -->
+    <div id="api-step-chave" class="hidden">
+      <div class="modal-title">🔑 Chave de API</div>
+      <div class="modal-sub" style="margin-bottom:1rem">Acesso de administrador liberado.</div>
+      <div class="mf" style="margin-bottom:.75rem">
+        <label>Chave API (Anthropic)</label>
+        <input id="api-key-input" type="password" placeholder="sk-ant-api03-..."
+          style="width:100%;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:var(--radius);padding:9px 12px;font-family:var(--mono);font-size:13px;outline:none;transition:border .15s"
+          autocomplete="off">
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:1rem">
+        <button class="btn btn-ghost btn-sm" style="flex:1" onclick="toggleKeyVis()" id="toggle-vis">👁 Mostrar</button>
+        <button class="btn btn-ghost btn-sm" style="flex:1;color:var(--danger)" onclick="removerChave()">🗑 Remover</button>
+      </div>
+      <div class="mactions">
+        <button class="btn btn-ghost btn-sm" onclick="fecharModalAPI()">Fechar</button>
+        <button class="btn btn-primary btn-sm" onclick="saveKey()">💾 Salvar chave</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ─── STATE ───────────────────────────────────────────────
+let apiKey = ''; // carregado apenas após autenticação por senha
+let files = [];
+let extracted = [];
+let afdContent = '';
+let editingIdx = -1;
+
+// ─── INIT ────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  // carregar chave API silenciosamente se já estiver salva
+  const saved = localStorage.getItem('ponto_apikey_enc');
+  if (saved) {
+    try {
+      apiKey = atob(saved);
+      atualizarIndicadorAPI(true);
+      setStep(2);
+    } catch(e) { localStorage.removeItem('ponto_apikey_enc'); }
+  }
+  // drag and drop
+  const dz = document.getElementById('drop-zone');
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('over'); addFiles([...e.dataTransfer.files]); });
+  document.getElementById('fi').addEventListener('change', e => addFiles([...e.target.files]));
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+});
+
+// ─── SENHA E API KEY (admin only) ────────────────────────
+const SENHA_HASH = '0145d72974abfe1e3149cb2f4090a9a2bab9c2c2dbc530deebe12aa37adbd899';
+
+async function sha256(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+function abrirModalAPI() {
+  // reset ao estado de senha sempre que abre
+  document.getElementById('api-step-senha').classList.remove('hidden');
+  document.getElementById('api-step-chave').classList.add('hidden');
+  document.getElementById('api-senha-erro').classList.add('hidden');
+  document.getElementById('api-senha-inp').value = '';
+  document.getElementById('modal-api').classList.remove('hidden');
+  setTimeout(() => document.getElementById('api-senha-inp').focus(), 80);
+}
+
+function fecharModalAPI() {
+  document.getElementById('modal-api').classList.add('hidden');
+  // limpa campo da chave por segurança
+  document.getElementById('api-key-input').value = '';
+  document.getElementById('api-key-input').type = 'password';
+  document.getElementById('toggle-vis').textContent = '👁 Mostrar';
+}
+
+async function confirmarSenhaAPI() {
+  const inp = document.getElementById('api-senha-inp');
+  const hash = await sha256(inp.value);
+  if (hash === SENHA_HASH) {
+    inp.value = '';
+    document.getElementById('api-step-senha').classList.add('hidden');
+    document.getElementById('api-step-chave').classList.remove('hidden');
+    // preencher campo se já tem chave salva
+    const saved = localStorage.getItem('ponto_apikey_enc');
+    if (saved) document.getElementById('api-key-input').value = atob(saved);
+    document.getElementById('api-key-input').focus();
+  } else {
+    inp.style.animation = 'none'; inp.offsetHeight;
+    inp.style.animation = 'shake .3s ease';
+    inp.style.borderColor = 'var(--danger)';
+    document.getElementById('api-senha-erro').classList.remove('hidden');
+    inp.value = '';
+    setTimeout(() => { inp.style.borderColor = ''; }, 600);
+  }
+}
+
+function saveKey() {
+  const val = document.getElementById('api-key-input').value.trim();
+  if (!val.startsWith('sk-ant')) { alert('Chave inválida. Deve começar com sk-ant...'); return; }
+  apiKey = val;
+  localStorage.setItem('ponto_apikey_enc', btoa(val));
+  atualizarIndicadorAPI(true);
+  fecharModalAPI();
+  setStep(2);
+}
+
+function removerChave() {
+  if (!confirm('Remover a chave API? O sistema não conseguirá processar sem ela.')) return;
+  apiKey = '';
+  localStorage.removeItem('ponto_apikey_enc');
+  atualizarIndicadorAPI(false);
+  fecharModalAPI();
+}
+
+function toggleKeyVis() {
+  const inp = document.getElementById('api-key-input');
+  const btn = document.getElementById('toggle-vis');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+  btn.textContent = inp.type === 'password' ? '👁 Mostrar' : '🙈 Ocultar';
+}
+
+function atualizarIndicadorAPI(ativa) {
+  const el = document.getElementById('api-indicator');
+  const txt = document.getElementById('api-indicator-txt');
+  if (ativa) {
+    el.className = 'notice';
+    txt.textContent = '✓ API configurada e ativa.';
+  } else {
+    el.className = 'notice notice-warn';
+    txt.textContent = '⚠ Chave não configurada.';
+  }
+}
+
+// ─── FILES ───────────────────────────────────────────────
+function addFiles(newFiles) {
+  let hasPdf = false;
+  newFiles.forEach(f => {
+    if (f.type === 'application/pdf') { hasPdf = true; return; }
+    if (!files.find(x => x.name === f.name)) files.push(f);
+  });
+  document.getElementById('pdf-warn').classList.toggle('hidden', !hasPdf);
+  renderFileList();
+}
+function renderFileList() {
+  const el = document.getElementById('file-list');
+  el.innerHTML = '';
+  files.forEach((f, i) => {
+    const d = document.createElement('div');
+    d.className = 'chip';
+    d.innerHTML = `<span>${f.type.startsWith('image/') ? '🖼' : '📄'}</span><span class="chip-name">${f.name}</span><span class="chip-sz">${(f.size/1024).toFixed(0)}KB</span><span class="chip-rm" onclick="removeFile(${i})">×</span>`;
+    el.appendChild(d);
+  });
+  document.getElementById('btn-process').disabled = files.length === 0 || !apiKey;
+}
+function removeFile(i) { files.splice(i, 1); renderFileList(); }
+function clearFiles() { files = []; renderFileList(); }
+
+// ─── LOG / PROGRESS ──────────────────────────────────────
+function log(msg, type = '') {
+  const box = document.getElementById('log-box');
+  const s = document.createElement('span');
+  if (type) s.className = 'log-' + type;
+  s.textContent = msg + '\n';
+  box.appendChild(s);
+  box.scrollTop = box.scrollHeight;
+}
+function setProgress(pct, label) {
+  document.getElementById('prog-fill').style.width = pct + '%';
+  const trk = document.getElementById('prog-track');
+  const lbl = document.getElementById('prog-label');
+  trk.classList.toggle('hidden', pct === 0);
+  lbl.classList.toggle('hidden', !label);
+  if (label !== undefined) lbl.textContent = label;
+}
+
+// ─── IMAGE RESIZE ────────────────────────────────────────
+function toBase64(file) {
+  return new Promise((res, rej) => {
+    const MAX = 1024;
+    const reader = new FileReader();
+    reader.onerror = rej;
+    reader.onload = e => {
+      const img = new Image();
+      img.onerror = rej;
+      img.onload = () => {
+        let {width: w, height: h} = img;
+        if (w <= MAX && h <= MAX) { res(e.target.result.split(',')[1]); return; }
+        const ratio = Math.min(MAX/w, MAX/h);
+        w = Math.round(w*ratio); h = Math.round(h*ratio);
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        res(canvas.toDataURL('image/jpeg', 0.88).split(',')[1]);
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// ─── PROCESSING ──────────────────────────────────────────
+async function startProcessing() {
+  if (!apiKey) { alert('Configure a chave de API primeiro.'); return; }
+  if (!files.length) return;
+  document.getElementById('log-box').innerHTML = '';
+  document.getElementById('btn-process').disabled = true;
+  setStep(3);
+  extracted = [];
+  log('Iniciando processamento...', 'info');
+
+  const prompt = `Você é um especialista em leitura de cartões de ponto brasileiros manuscritos.
+Analise a imagem com cuidado e extraia TODOS os registros de ponto visíveis.
+Retorne APENAS um JSON válido (sem markdown, sem texto antes ou depois):
+{
+  "matricula":"string","nome":"string","pis":"string (apenas números)",
+  "mes":"string (2 dígitos)","ano":"string (4 dígitos)","quinzena":"1 ou 2",
+  "registros":[{"dia":"número do dia","marcacoes":["HH:MM",...],"observacao":"BH|F|FOLGA ou vazio"}]
+}
+REGRAS: marcacoes em ordem (entrada manhã, saída manhã, entrada tarde, saída tarde).
+Se o dia tiver BH/DH/F/S/D: use observacao e marcacoes=[].
+Inclua APENAS dias com registro. Não invente dados.`;
+
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    setProgress(10 + Math.round((i / files.length) * 75), `Processando ${i+1}/${files.length}: ${f.name}`);
+    log(`\n[${i+1}/${files.length}] ${f.name}`);
+    try {
+      const b64 = await toBase64(f);
+      const kb = Math.round(b64.length * 0.75 / 1024);
+      log(`  → ~${kb} KB enviados`, 'info');
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5',
+          max_tokens: 1500,
+          messages: [{ role: 'user', content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
+            { type: 'text', text: prompt }
+          ]}]
+        })
+      });
+      if (!resp.ok) { const e = await resp.json(); log(`  ✗ API: ${e.error?.message || resp.status}`, 'err'); continue; }
+      const data = await resp.json();
+      const raw = data.content?.map(c => c.text||'').join('').trim();
+      if (!raw) { log('  ✗ Resposta vazia', 'err'); continue; }
+      let parsed;
+      try { parsed = JSON.parse(raw.replace(/```json|```/g,'').trim()); }
+      catch(e) { log(`  ✗ JSON inválido: ${e.message}`, 'err'); continue; }
+      const regs = parsed.registros || [];
+      log(`  ✓ ${parsed.nome} | Q${parsed.quinzena} | ${regs.length} dias`, 'ok');
+      regs.forEach(r => extracted.push({
+        matricula: parsed.matricula||'', nome: parsed.nome||'',
+        pis: (parsed.pis||'').replace(/\D/g,''),
+        mes: parsed.mes||'', ano: parsed.ano||'', quinzena: parsed.quinzena||'',
+        dia: String(r.dia).padStart(2,'0'),
+        marcacoes: r.marcacoes||[], observacao: r.observacao||''
+      }));
+    } catch(e) { log(`  ✗ ${e.message}`, 'err'); }
+  }
+
+  setProgress(100, 'Concluído!');
+  if (!extracted.length) {
+    log('\nNenhum dado extraído. Verifique as imagens e a chave.', 'err');
+    document.getElementById('btn-process').disabled = false;
+    setStep(2);
+    return;
+  }
+  extracted.sort((a,b) => parseInt(a.dia) - parseInt(b.dia));
+  log(`\n✓ ${extracted.length} registros prontos.`, 'ok');
+  setTimeout(showReview, 500);
+}
+
+// ─── REVIEW ──────────────────────────────────────────────
+function showReview() {
+  document.getElementById('empty-state').classList.add('hidden');
+  document.getElementById('main-table').classList.remove('hidden');
+  document.getElementById('panel-export').classList.remove('hidden');
+  document.getElementById('btn-export-top').classList.remove('hidden');
+  document.getElementById('btn-csv-top').classList.remove('hidden');
+  setStep(4);
+  renderMetrics();
+  renderTable();
+  generateAFD();
+}
+
+// ─── INCONSISTENCY ───────────────────────────────────────
+function hasInconsistency(r) {
+  if (r.observacao) return false;
+  if (!r.marcacoes.length) return false;
+  if (r.marcacoes.length % 2 !== 0) return true;
+  for (let i = 0; i < r.marcacoes.length - 1; i++) {
+    if (toMins(r.marcacoes[i+1]) <= toMins(r.marcacoes[i])) return true;
+  }
+  return false;
+}
+function toMins(t) {
+  if (!t) return 0;
+  const [h, m] = t.split(':').map(Number);
+  return h*60 + (m||0);
+}
+
+// ─── METRICS ─────────────────────────────────────────────
+function renderMetrics() {
+  const total  = extracted.length;
+  const incons = extracted.filter(r => hasInconsistency(r)).length;
+  const bh     = extracted.filter(r => /BH/i.test(r.observacao)).length;
+  const folga  = extracted.filter(r => /F|FERIADO|FOLGA/i.test(r.observacao) && !r.marcacoes.length).length;
+
+  const set = (id, val, cls) => {
+    const el = document.getElementById(id);
+    const prev = el.textContent;
+    el.textContent = val;
+    el.className = 'mv' + (cls ? ' '+cls : '');
+    if (prev !== String(val) && prev !== '—') {
+      el.style.animation = 'none'; el.offsetHeight;
+      el.style.animation = 'metricPop .4s ease';
+    }
+  };
+  set('m-total',  total,  '');
+  set('m-incons', incons, incons === 0 ? 'ok' : 'danger');
+  set('m-bh',     bh,     bh > 0 ? 'warn' : '');
+  set('m-folga',  folga,  '');
+
+  const sb = document.getElementById('status-bar');
+  if (incons > 0) {
+    sb.className = 'status-bar warn';
+    sb.innerHTML = `⚠ <strong>${incons} inconsistência(s) pendente(s).</strong> Clique em ✎ para corrigir antes de exportar.`;
+  } else {
+    sb.className = 'status-bar ok';
+    sb.innerHTML = '✅ <strong>Tudo certo!</strong> Nenhuma inconsistência. Pode exportar o AFD.';
+  }
+}
+
+// ─── TABLE ───────────────────────────────────────────────
+function renderTable() {
+  const tb = document.getElementById('tbody');
+  tb.innerHTML = '';
+  extracted.forEach((r, idx) => {
+    const inc = hasInconsistency(r);
+    const m = r.marcacoes;
+    const obs = r.observacao;
+    const tr = document.createElement('tr');
+    if (inc) tr.classList.add('has-error');
+    const badge = inc
+      ? '<span class="badge badge-warn">INCONS.</span>'
+      : (obs && !m.length ? `<span class="badge badge-info">${obs}</span>` : '<span class="badge badge-ok">OK</span>');
+    tr.innerHTML = `
+      <td style="padding:5px 4px;text-align:center"><button class="edit-btn">✎</button></td>
+      <td>${r.matricula}</td>
+      <td title="${r.nome}">${r.nome}</td>
+      <td style="font-size:11px">${r.pis}</td>
+      <td style="font-weight:500;color:var(--text)">${r.dia}/${r.mes}/${r.ano}</td>
+      <td class="${inc && m.length % 2 !== 0 ? 'danger':''}">${m[0]||(obs&&!m.length?`<span style="color:var(--text3);font-size:10px">${obs}</span>`:'—')}</td>
+      <td>${m[1]||'—'}</td>
+      <td>${m[2]||'—'}</td>
+      <td class="${inc && m.length===3?'danger':''}">${m[3]||'—'}</td>
+      <td style="font-size:11px;color:var(--text3)">${obs||''}</td>
+      <td>${badge}</td>`;
+    tr.querySelector('.edit-btn').addEventListener('click', () => openModal(idx));
+    tb.appendChild(tr);
+  });
+}
+
+// ─── MODAL ───────────────────────────────────────────────
+function formatHora(raw) {
+  if (!raw) return '';
+  const d = raw.replace(/\D/g,'');
+  if (d.length === 3) return d[0]+':'+d.slice(1);
+  if (d.length === 4) return d.slice(0,2)+':'+d.slice(2);
+  if (raw.includes(':') && raw.length <= 5) return raw;
+  return raw;
+}
+function validaHora(h) {
+  if (!h) return true;
+  const m = h.match(/^(\d{1,2}):(\d{2})$/);
+  return m && parseInt(m[1]) < 24 && parseInt(m[2]) < 60;
+}
+function openModal(idx) {
+  editingIdx = idx;
+  const r = extracted[idx];
+  document.getElementById('modal-title').textContent = `Editar — ${r.nome||'Funcionário'}`;
+  document.getElementById('modal-sub').textContent = `Matrícula ${r.matricula} · ${r.dia}/${r.mes}/${r.ano}`;
+  document.getElementById('m-mat').value  = r.matricula||'';
+  document.getElementById('m-pis').value  = r.pis||'';
+  document.getElementById('m-dia').value  = r.dia||'';
+  document.getElementById('m-mes').value  = r.mes||'';
+  document.getElementById('m-e1').value   = r.marcacoes[0]||'';
+  document.getElementById('m-s1').value   = r.marcacoes[1]||'';
+  document.getElementById('m-e2').value   = r.marcacoes[2]||'';
+  document.getElementById('m-s2').value   = r.marcacoes[3]||'';
+  document.getElementById('m-obs').value  = r.observacao||'';
+  ['m-e1','m-s1','m-e2','m-s2'].forEach(id => {
+    const el = document.getElementById(id);
+    el.oninput = () => el.classList.remove('ferr','fok');
+    el.onblur  = () => {
+      const fmt = formatHora(el.value);
+      el.value = fmt;
+      el.classList.toggle('ferr', !!(fmt && !validaHora(fmt)));
+      el.classList.toggle('fok',  !!(fmt && validaHora(fmt)));
+    };
+  });
+  document.getElementById('edit-modal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('m-e1').focus(), 80);
+}
+function closeModal() { document.getElementById('edit-modal').classList.add('hidden'); editingIdx = -1; }
+function closeModalOut(e) { if (e.target.id === 'edit-modal') closeModal(); }
+function saveModal() {
+  const ids = ['m-e1','m-s1','m-e2','m-s2'];
+  let err = false;
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    const fmt = formatHora(el.value); el.value = fmt;
+    if (fmt && !validaHora(fmt)) { el.classList.add('ferr'); err = true; }
+  });
+  if (err) return;
+  const r = extracted[editingIdx];
+  r.matricula  = document.getElementById('m-mat').value.trim();
+  r.pis        = document.getElementById('m-pis').value.trim().replace(/\D/g,'');
+  r.dia        = document.getElementById('m-dia').value.trim().padStart(2,'0');
+  r.mes        = document.getElementById('m-mes').value.trim().padStart(2,'0');
+  r.observacao = document.getElementById('m-obs').value.trim();
+  r.marcacoes  = ids.map(id => document.getElementById(id).value.trim()).filter(v => v);
+  closeModal();
+  renderTable();
+  renderMetrics();
+  generateAFD();
+}
+
+// ─── AFD ─────────────────────────────────────────────────
+function pad(v, n) { return String(v).padStart(n,'0'); }
+
+function generateAFD() {
+  const lines = [];
+  const CNPJ    = '19065728900010';
+  const CAMPO24 = '9              ';
+  const EMPRESA = 'COOP. AGRIC. MISTA GEN. OS\xd3RIO LTDA'.padEnd(150,' ').substring(0,150);
+  const C189    = '000';
+  const RELOGIO = '090036600';
+  const C201    = '09490';
+  const RESTO   = '0003172041049000101' + ' '.repeat(30);
+
+  const datas = extracted.filter(r => r.marcacoes.length > 0)
+    .map(r => `${r.ano}-${pad(parseInt(r.mes),2)}-${pad(parseInt(r.dia),2)}`);
+  datas.sort();
+  const dtIni = datas[0] || '2026-05-01';
+  const dtFim = datas[datas.length-1] || dtIni;
+  const now = new Date();
+  const dtGer = `${now.getFullYear()}-${pad(now.getMonth()+1,2)}-${pad(now.getDate(),2)}T${pad(now.getHours(),2)}:${pad(now.getMinutes(),2)}:${pad(now.getSeconds(),2)}-030`;
+
+  lines.push('000000000' + '1' + CNPJ + CAMPO24 + EMPRESA + C189 + RELOGIO + C201 + dtIni + dtFim + dtGer + RESTO);
+
+  const regs = [];
+  extracted.forEach(r => {
+    if (r.observacao && !r.marcacoes.length) return;
+    r.marcacoes.forEach(hora => regs.push({
+      dt:  `${r.ano}-${pad(parseInt(r.mes),2)}-${pad(parseInt(r.dia),2)}`,
+      hora, pis: r.pis.padStart(11,'0').substring(0,11)
+    }));
+  });
+  regs.sort((a,b) => (a.dt+'T'+a.hora).localeCompare(b.dt+'T'+b.hora));
+
+  regs.forEach((item, i) => {
+    lines.push(pad(i+1,9) + '3' + item.dt + 'T' + item.hora + ':00-030' + '0' + item.pis + ' ');
+  });
+  lines.push('999999999' + '9' + pad(regs.length,9) + pad(0,9) + pad(0,9) + pad(0,9));
+
+  afdContent = lines.join('\r\n');
+  document.getElementById('afd-preview').textContent = afdContent;
+}
+
+// ─── DOWNLOADS ───────────────────────────────────────────
+function downloadAFD() {
+  if (!afdContent) { alert('Processe os cartões primeiro.'); return; }
+  const ref = extracted[0] || {};
+  download(afdContent, `AFD_${ref.mes||'MM'}_${ref.ano||'YYYY'}.txt`, 'text/plain;charset=latin-1');
+}
+function downloadCSV() {
+  if (!extracted.length) { alert('Processe os cartões primeiro.'); return; }
+  const BOM = '\uFEFF';
+  const h = ['Matrícula','Nome','PIS','Mês','Ano','Quinzena','Dia','Entrada1','Saída1','Entrada2','Saída2','Observação','Status'];
+  const rows = extracted.map(r => [
+    r.matricula, r.nome, r.pis, r.mes, r.ano, r.quinzena, r.dia,
+    r.marcacoes[0]||'', r.marcacoes[1]||'', r.marcacoes[2]||'', r.marcacoes[3]||'',
+    r.observacao, hasInconsistency(r) ? 'INCONSISTENTE' : (r.observacao||'OK')
+  ]);
+  const csv = [h,...rows].map(row => row.map(v => `"${v}"`).join(',')).join('\r\n');
+  const ref = extracted[0] || {};
+  download(BOM+csv, `Ponto_${ref.mes||'MM'}_${ref.ano||'YYYY'}.csv`, 'text/csv;charset=utf-8');
+}
+function download(content, filename, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content], {type}));
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ─── STEPS ───────────────────────────────────────────────
+function setStep(n) {
+  for (let i = 1; i <= 5; i++) {
+    const el = document.getElementById('s'+i);
+    el.className = 'step' + (i < n ? ' done' : i === n ? ' active' : '');
+  }
+}
+
+// ─── RESET ───────────────────────────────────────────────
+function resetApp() {
+  files = []; extracted = []; afdContent = '';
+  ['file-list','log-box','afd-preview'].forEach(id => document.getElementById(id).innerHTML = '');
+  document.getElementById('tbody').innerHTML = '';
+  document.getElementById('prog-track').classList.add('hidden');
+  document.getElementById('prog-label').classList.add('hidden');
+  document.getElementById('panel-export').classList.add('hidden');
+  document.getElementById('btn-export-top').classList.add('hidden');
+  document.getElementById('btn-csv-top').classList.add('hidden');
+  document.getElementById('empty-state').classList.remove('hidden');
+  document.getElementById('main-table').classList.add('hidden');
+  document.getElementById('status-bar').className = 'status-bar hidden';
+  document.getElementById('btn-process').disabled = true;
+  document.getElementById('fi').value = '';
+  ['m-total','m-incons','m-bh','m-folga'].forEach(id => {
+    const el = document.getElementById(id);
+    el.textContent = '—'; el.className = 'mv';
+  });
+  setProgress(0);
+  setStep(apiKey ? 2 : 1);
+}
+</script>
+</body>
+</html>
