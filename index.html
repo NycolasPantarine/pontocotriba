@@ -211,7 +211,7 @@ input[type=file]{display:none}
         <div class="dz-title">Clique ou arraste aqui</div>
         <div class="dz-sub">JPG, PNG ou PDF — múltiplos arquivos</div>
       </div>
-      <input type="file" id="fi" multiple accept="image/*,.pdf,application/pdf">
+      <input type="file" id="fi" multiple accept="image/jpeg,image/png,image/jpg,.pdf">
       <div class="file-list" id="file-list"></div>
 
       <div style="margin-top:.75rem;display:flex;gap:6px">
@@ -418,8 +418,14 @@ document.addEventListener('DOMContentLoaded', () => {
   const dz = document.getElementById('drop-zone');
   dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
   dz.addEventListener('dragleave', () => dz.classList.remove('over'));
-  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('over'); addFiles([...e.dataTransfer.files]); });
-  document.getElementById('fi').addEventListener('change', e => addFiles([...e.target.files]));
+  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('over'); if (e.dataTransfer.files.length) addFiles([...e.dataTransfer.files]); });
+  const fi = document.getElementById('fi');
+  fi.addEventListener('change', e => {
+    if (e.target.files && e.target.files.length > 0) {
+      addFiles([...e.target.files]);
+      e.target.value = ''; // permite selecionar o mesmo arquivo novamente
+    }
+  });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 });
 
@@ -527,7 +533,7 @@ function renderFileList() {
   document.getElementById('btn-process').disabled = files.length === 0;
 }
 function removeFile(i) { files.splice(i, 1); renderFileList(); }
-function clearFiles() { files = []; renderFileList(); }
+function clearFiles() { files = []; document.getElementById('fi').value = ''; renderFileList(); }
 
 // ─── LOG / PROGRESS ──────────────────────────────────────
 function log(msg, type = '') {
