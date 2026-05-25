@@ -228,6 +228,13 @@ input[type=file]{display:none}
     <!-- EXPORTAR (aparece após processar) -->
     <div class="sb-sec hidden" id="panel-export">
       <div class="sb-label">📤 Exportar</div>
+      <!-- Filtro de colaborador para exportação -->
+      <div style="margin-bottom:8px">
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Exportar registros de</div>
+        <select id="export-filtro" style="width:100%;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:var(--radius);padding:7px 10px;font-family:var(--sans);font-size:12px;outline:none;cursor:pointer" onchange="atualizarPreviewAFD()">
+          <option value="">Todos os colaboradores</option>
+        </select>
+      </div>
       <div style="display:flex;flex-direction:column;gap:6px">
         <button class="btn btn-primary btn-block" onclick="downloadAFD()">⬇ Baixar AFD (.txt)</button>
         <button class="btn btn-ghost btn-block" onclick="downloadCSV()">⬇ Baixar CSV (Excel)</button>
@@ -692,6 +699,7 @@ function showReview() {
   setStep(4);
   renderMetrics();
   renderTable();
+  popularFiltroExport();
   generateAFD();
 }
 
@@ -838,6 +846,34 @@ function saveModal() {
   generateAFD();
 }
 
+// ─── FILTRO DE EXPORTAÇÃO ────────────────────────────────
+function popularFiltroExport() {
+  const sel = document.getElementById('export-filtro');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Todos os colaboradores</option>';
+  // Pegar colaboradores únicos dos registros extraídos
+  const vistos = new Set();
+  extracted.forEach(r => {
+    if (!vistos.has(r.matricula)) {
+      vistos.add(r.matricula);
+      const opt = document.createElement('option');
+      opt.value = r.matricula;
+      opt.textContent = `${r.matricula} — ${r.nome}`;
+      sel.appendChild(opt);
+    }
+  });
+}
+
+function getRegistrosFiltrados() {
+  const sel = document.getElementById('export-filtro');
+  const mat = sel ? sel.value : '';
+  return mat ? extracted.filter(r => r.matricula === mat) : extracted;
+}
+
+function atualizarPreviewAFD() {
+  generateAFD();
+}
+
 // ─── AFD ─────────────────────────────────────────────────
 function pad(v, n) { return String(v).padStart(n,'0'); }
 
@@ -849,7 +885,8 @@ function generateAFD() {
   const RELOGIO = '000090036';
   const NR_ARQ  = '60004928';
 
-  const datas = extracted.filter(r => r.marcacoes.length > 0).map(r => ({
+  const fonte = getRegistrosFiltrados();
+  const datas = fonte.filter(r => r.marcacoes.length > 0).map(r => ({
     dia: pad(parseInt(r.dia),2), mes: pad(parseInt(r.mes),2), ano: r.ano
   }));
   datas.sort((a,b) => (a.ano+a.mes+a.dia).localeCompare(b.ano+b.mes+b.dia));
@@ -865,7 +902,7 @@ function generateAFD() {
   lines.push(cab);
 
   const regs = [];
-  extracted.forEach(r => {
+  fonte.forEach(r => {
     if (r.observacao && !r.marcacoes.length) return;
     r.marcacoes.forEach(hora => {
       regs.push({
@@ -905,9 +942,10 @@ function downloadAFD() {
 }
 function downloadCSV() {
   if (!extracted.length) { alert('Processe os cartões primeiro.'); return; }
+  const fonte = getRegistrosFiltrados();
   const BOM = '\uFEFF';
   const h = ['Matrícula','Nome','PIS','Mês','Ano','Quinzena','Dia','Entrada1','Saída1','Entrada2','Saída2','Observação','Status'];
-  const rows = extracted.map(r => [
+  const rows = fonte.map(r => [
     r.matricula, r.nome, r.pis, r.mes, r.ano, r.quinzena, r.dia,
     r.marcacoes[0]||'', r.marcacoes[1]||'', r.marcacoes[2]||'', r.marcacoes[3]||'',
     r.observacao, hasInconsistency(r) ? 'INCONSISTENTE' : (r.observacao||'OK')
@@ -941,6 +979,8 @@ function resetApp() {
   document.getElementById('prog-label').classList.add('hidden');
   document.getElementById('panel-export').classList.add('hidden');
   document.getElementById('btn-export-top').classList.add('hidden');
+  const sel = document.getElementById('export-filtro');
+  if (sel) sel.innerHTML = '<option value="">Todos os colaboradores</option>';
   document.getElementById('btn-massa').classList.add('hidden');
   document.getElementById('btn-csv-top').classList.add('hidden');
   document.getElementById('empty-state').classList.remove('hidden');
@@ -1059,6 +1099,7 @@ function aplicarMassa() {
   fecharMassa();
   renderTable();
   renderMetrics();
+  popularFiltroExport();
   generateAFD();
   log(`✓ ${qtd} registro(s) atualizados para ${massaColab.n}.`, 'ok');
 }
