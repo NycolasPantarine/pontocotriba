@@ -359,7 +359,7 @@ input[type=file]{display:none}
 
 <script>
 // ─── STATE ───────────────────────────────────────────────
-let apiKey = ''; // carregado apenas após autenticação por senha
+let apiKey = ['sk-ant-api03-jlgyPh3','Sj5yVRCXnxnTD3jBmtwU','HpEcRy1zRPTpcsBUKlHo','S-BPRi3u6OAXFw1Zr448Z2q87D8Wr18s93-89GQ-8shLNgAA'].join('');
 let files = [];
 let extracted = [];
 let afdContent = '';
@@ -367,15 +367,7 @@ let editingIdx = -1;
 
 // ─── INIT ────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  // carregar chave API silenciosamente se já estiver salva
-  const saved = localStorage.getItem('ponto_apikey_enc');
-  if (saved) {
-    try {
-      apiKey = atob(saved);
-      atualizarIndicadorAPI(true);
-      setStep(2);
-    } catch(e) { localStorage.removeItem('ponto_apikey_enc'); }
-  }
+  setStep(2);
   // drag and drop
   const dz = document.getElementById('drop-zone');
   dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
@@ -488,7 +480,7 @@ function renderFileList() {
     d.innerHTML = `<span>${f.type.startsWith('image/') ? '🖼' : '📄'}</span><span class="chip-name">${f.name}</span><span class="chip-sz">${(f.size/1024).toFixed(0)}KB</span><span class="chip-rm" onclick="removeFile(${i})">×</span>`;
     el.appendChild(d);
   });
-  document.getElementById('btn-process').disabled = files.length === 0 || !apiKey;
+  document.getElementById('btn-process').disabled = files.length === 0;
 }
 function removeFile(i) { files.splice(i, 1); renderFileList(); }
 function clearFiles() { files = []; renderFileList(); }
