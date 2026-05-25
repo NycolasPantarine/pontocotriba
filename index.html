@@ -506,7 +506,7 @@ function setProgress(pct, label) {
 // ─── IMAGE RESIZE ────────────────────────────────────────
 function toBase64(file) {
   return new Promise((res, rej) => {
-    const MAX = 1024;
+    const MAX = 1600;
     const reader = new FileReader();
     reader.onerror = rej;
     reader.onload = e => {
@@ -539,7 +539,21 @@ async function startProcessing() {
   log('Iniciando processamento...', 'info');
 
   const prompt = `Você é um especialista em leitura de cartões de ponto brasileiros manuscritos.
-Analise a imagem com cuidado e extraia TODOS os registros de ponto visíveis.
+Analise a imagem com MÁXIMO cuidado e extraia TODOS os registros de ponto visíveis.
+
+ATENÇÃO ESPECIAL AOS DÍGITOS MANUSCRITOS — erros comuns:
+- 1 e 7 são frequentemente confundidos (ex: 17:32 pode parecer 11:32 ou 19:32)
+- 3 e 8 são frequentemente confundidos (ex: 13:38 pode parecer 18:38)
+- 0 e 6 são frequentemente confundidos
+- 5 e 6 são frequentemente confundidos
+
+Use o CONTEXTO para validar cada horário lido:
+- Entrada manhã: tipicamente entre 06:00 e 08:30
+- Saída manhã: tipicamente entre 11:00 e 12:30
+- Entrada tarde: tipicamente entre 12:00 e 14:00
+- Saída tarde: tipicamente entre 16:00 e 19:30
+Se um horário não fizer sentido nesse contexto, releia o dígito com atenção.
+
 Retorne APENAS um JSON válido (sem markdown, sem texto antes ou depois):
 {
   "matricula":"string","nome":"string","pis":"string (apenas números)",
@@ -567,7 +581,7 @@ Inclua APENAS dias com registro. Não invente dados.`;
           'anthropic-dangerous-direct-browser-access': 'true'
         },
         body: JSON.stringify({
-          model: 'claude-haiku-4-5',
+          model: 'claude-sonnet-4-5',
           max_tokens: 1500,
           messages: [{ role: 'user', content: [
             { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
@@ -768,47 +782,64 @@ function pad(v, n) { return String(v).padStart(n,'0'); }
 function generateAFD() {
   const lines = [];
   const CNPJ    = '19065728900010';
-  const CAMPO24 = '9              ';
-  const EMPRESA = 'COOP. AGRIC. MISTA GEN. OS\xd3RIO LTDA'.padEnd(150,' ').substring(0,150);
-  const C189    = '000';
-  const RELOGIO = '090036600';
-  const C201    = '09490';
-  const RESTO   = '0003172041049000101' + ' '.repeat(30);
+  const CAMPO24 = '900000000000';
+  const EMPRESA = ('0COOP. AGRIC. MISTA GEN. OSÓRIO LTDA').padEnd(150,' ').substring(0,150);
+  const RELOGIO = '000090036';
+  const NR_ARQ  = '60004928';
 
-  const datas = extracted.filter(r => r.marcacoes.length > 0)
-    .map(r => `${r.ano}-${pad(parseInt(r.mes),2)}-${pad(parseInt(r.dia),2)}`);
-  datas.sort();
-  const dtIni = datas[0] || '2026-05-01';
-  const dtFim = datas[datas.length-1] || dtIni;
+  const datas = extracted.filter(r => r.marcacoes.length > 0).map(r => ({
+    dia: pad(parseInt(r.dia),2), mes: pad(parseInt(r.mes),2), ano: r.ano
+  }));
+  datas.sort((a,b) => (a.ano+a.mes+a.dia).localeCompare(b.ano+b.mes+b.dia));
+  const ini = datas[0] || {dia:'01',mes:'01',ano:'2026'};
+  const fim = datas[datas.length-1] || ini;
+  const dtIni = ini.dia + ini.mes + ini.ano;
+  const dtFim = fim.dia + fim.mes + fim.ano;
   const now = new Date();
-  const dtGer = `${now.getFullYear()}-${pad(now.getMonth()+1,2)}-${pad(now.getDate(),2)}T${pad(now.getHours(),2)}:${pad(now.getMinutes(),2)}:${pad(now.getSeconds(),2)}-030`;
+  const dtGer = pad(now.getDate(),2) + pad(now.getMonth()+1,2) + now.getFullYear();
+  const hrGer = pad(now.getHours(),2) + pad(now.getMinutes(),2);
 
-  lines.push('000000000' + '1' + CNPJ + CAMPO24 + EMPRESA + C189 + RELOGIO + C201 + dtIni + dtFim + dtGer + RESTO);
+  const cab = '000000000' + '1' + CNPJ + CAMPO24 + EMPRESA + ' ' + RELOGIO + NR_ARQ + dtIni + dtFim + dtGer + hrGer;
+  lines.push(cab);
 
   const regs = [];
   extracted.forEach(r => {
     if (r.observacao && !r.marcacoes.length) return;
-    r.marcacoes.forEach(hora => regs.push({
-      dt:  `${r.ano}-${pad(parseInt(r.mes),2)}-${pad(parseInt(r.dia),2)}`,
-      hora, pis: r.pis.padStart(11,'0').substring(0,11)
-    }));
+    r.marcacoes.forEach(hora => {
+      regs.push({
+        dt:  pad(parseInt(r.dia),2) + pad(parseInt(r.mes),2) + r.ano,
+        hora: hora.replace(':',''),
+        pis: r.pis.padStart(11,'0').substring(0,11)
+      });
+    });
   });
-  regs.sort((a,b) => (a.dt+'T'+a.hora).localeCompare(b.dt+'T'+b.hora));
+  regs.sort((a,b) => (a.dt.slice(4)+a.dt.slice(2,4)+a.dt.slice(0,2)+a.hora)
+                    .localeCompare(b.dt.slice(4)+b.dt.slice(2,4)+b.dt.slice(0,2)+b.hora));
 
   regs.forEach((item, i) => {
-    lines.push(pad(i+1,9) + '3' + item.dt + 'T' + item.hora + ':00-030' + '0' + item.pis + ' ');
+    lines.push(pad(i+1,9) + '3' + item.dt + item.hora + '0' + item.pis);
   });
-  lines.push('999999999' + '9' + pad(regs.length,9) + pad(0,9) + pad(0,9) + pad(0,9));
+
+  lines.push('999999999' + '0' + pad(regs.length,9) + pad(0,9) + pad(0,9) + pad(0,9));
 
   afdContent = lines.join('\r\n');
   document.getElementById('afd-preview').textContent = afdContent;
 }
 
-// ─── DOWNLOADS ───────────────────────────────────────────
 function downloadAFD() {
   if (!afdContent) { alert('Processe os cartões primeiro.'); return; }
   const ref = extracted[0] || {};
-  download(afdContent, `AFD_${ref.mes||'MM'}_${ref.ano||'YYYY'}.txt`, 'text/plain;charset=latin-1');
+  const latin1 = Array.from(afdContent).map(c => {
+    const code = c.charCodeAt(0);
+    return code <= 255 ? code : 63;
+  });
+  const blob = new Blob([new Uint8Array(latin1)], {type:'text/plain;charset=iso-8859-1'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `AFD_\${ref.mes||'MM'}_\${ref.ano||'YYYY'}.txt`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  return;
 }
 function downloadCSV() {
   if (!extracted.length) { alert('Processe os cartões primeiro.'); return; }
