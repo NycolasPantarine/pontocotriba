@@ -189,7 +189,8 @@ input[type=file]{display:none}
     <div class="step" id="s5"><span class="step-n">5</span>Exportar</div>
   </div>
   <div class="top-actions">
-    <button class="btn btn-ghost btn-sm hidden" id="btn-massa" onclick="abrirEdicaoMassa()" style="border-color:var(--warn);color:var(--warn)">✎ Edição em massa</button>
+    <button class="btn btn-ghost btn-sm hidden" id="btn-massa" onclick="abrirEdicaoMassa()" style="border-color:var(--warn);color:var(--warn)">✎ Colaboradores</button>
+    <button class="btn btn-ghost btn-sm hidden" id="btn-massa-data" onclick="abrirEdicaoData()" style="border-color:var(--info);color:var(--info)">📅 Datas</button>
     <button class="btn btn-ghost btn-sm hidden" id="btn-export-top" onclick="downloadAFD()">⬇ AFD</button>
     <button class="btn btn-ghost btn-sm hidden" id="btn-csv-top" onclick="downloadCSV()">⬇ CSV</button>
     <button class="btn btn-ghost btn-sm" onclick="resetApp()">↩ Reiniciar</button>
@@ -723,6 +724,7 @@ function showReview() {
   document.getElementById('btn-export-top').classList.remove('hidden');
   document.getElementById('btn-csv-top').classList.remove('hidden');
   document.getElementById('btn-massa').classList.remove('hidden');
+  document.getElementById('btn-massa-data').classList.remove('hidden');
   setStep(4);
   renderMetrics();
   renderTable();
@@ -1024,6 +1026,7 @@ function resetApp() {
   const sel = document.getElementById('export-filtro');
   if (sel) sel.innerHTML = '<option value="">Todos os colaboradores</option>';
   document.getElementById('btn-massa').classList.add('hidden');
+  document.getElementById('btn-massa-data').classList.add('hidden');
   document.getElementById('btn-csv-top').classList.add('hidden');
   document.getElementById('empty-state').classList.remove('hidden');
   document.getElementById('main-table').classList.add('hidden');
@@ -1148,5 +1151,51 @@ function aplicarMassa() {
 }
 
 </script>
+<!-- MODAL EDIÇÃO DE DATAS -->
+<div class="modal-overlay hidden" id="modal-data" onclick="if(event.target.id==='modal-data')fecharData()">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-title">📅 Edição em massa — datas</div>
+    <div class="modal-sub" style="margin-bottom:1.25rem">Corrija mês e/ou ano de todos os registros de uma vez, ou filtre por colaborador.</div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:1rem">
+
+      <div class="mf full">
+        <label>Filtrar por colaborador (opcional)</label>
+        <select id="data-filtro-colab" style="width:100%;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:var(--radius);padding:8px 10px;font-family:var(--sans);font-size:12px;outline:none">
+          <option value="">Todos os colaboradores</option>
+        </select>
+      </div>
+
+      <div class="msec full" style="margin-top:4px">Substituir valores</div>
+
+      <div class="mf">
+        <label>Mês (MM)</label>
+        <input id="data-mes" type="text" maxlength="2" placeholder="ex: 05"
+          style="width:100%;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:var(--radius);padding:9px 10px;font-family:var(--mono);font-size:16px;outline:none;text-align:center;transition:border .15s"
+          oninput="atualizarPreviewData()">
+      </div>
+      <div class="mf">
+        <label>Ano (AAAA)</label>
+        <input id="data-ano" type="text" maxlength="4" placeholder="ex: 2026"
+          style="width:100%;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:var(--radius);padding:9px 10px;font-family:var(--mono);font-size:16px;outline:none;text-align:center;transition:border .15s"
+          oninput="atualizarPreviewData()">
+      </div>
+
+    </div>
+
+    <div style="background:var(--bg3);border-radius:var(--radius);padding:12px;margin-bottom:1rem;font-size:12px" id="data-preview">
+      <span style="color:var(--text3)">Preencha mês e/ou ano para visualizar o que será alterado.</span>
+    </div>
+
+    <div class="notice" style="padding:7px 10px;font-size:11px;margin-bottom:1rem">
+      <span>ℹ Deixe mês ou ano em branco para não alterar esse campo. O dia de cada registro não será tocado.</span>
+    </div>
+
+    <div class="mactions">
+      <button class="btn btn-ghost btn-sm" onclick="fecharData()">Cancelar</button>
+      <button class="btn btn-primary btn-sm" id="btn-aplicar-data" disabled onclick="aplicarData()">Aplicar datas</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
